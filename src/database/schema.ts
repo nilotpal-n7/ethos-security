@@ -25,7 +25,7 @@ export const locations = pgTable("locations", {
   name: text("name").notNull().unique(),
   type: text("type", { enum: ["entry_gate", "wifi_ap", "cctv_camera", "library", "laboratory", "office", "auditorium", "seminar_hall"] }).notNull(),
   building: text("building"),
-  roomNumber: varchar("room_number", { length: 20 }), // Made nullable
+  roomNumber: varchar("room_number", { length: 20 }),
 });
 
 export const libraryAssets = pgTable("library_assets", {
