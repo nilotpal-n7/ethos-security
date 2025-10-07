@@ -3,8 +3,8 @@
 
 import { useState } from "react";
 import { Header } from "@/components/Header";
-import { Timeline } from "@/components/Timeline";
 import { BackgroundDate } from "@/components/BackgroundDate";
+import { TimelineContainer } from "@/components/TimelineContainer";
 
 export default function DashboardPage() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
@@ -22,7 +22,7 @@ export default function DashboardPage() {
       <Header onUserSelect={handleUserSelect} />
       <main className="relative z-0 container mx-auto px-6 pt-24 pb-12">
         {selectedUserId ? (
-          <Timeline userId={selectedUserId} onMonthChange={setBackgroundDate} />
+          <TimelineContainer userId={selectedUserId} />
         ) : (
           <div className="flex items-center justify-center h-[70vh]">
             <p className="text-gray-500 text-xl">Search for an entity to view their activity timeline</p>
