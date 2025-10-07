@@ -1,24 +1,12 @@
+// src/app/(app)/alert/page.tsx
+
 import { AlertsClient } from "@/components/AlertsClient";
+import { getInactivityAlertsData } from "@/lib/data/alerts";
 
-async function getInactivityAlerts() {
-    try {
-        // Use an absolute URL for server-side fetching
-        const apiUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/alerts/inactivity`;
-        const res = await fetch(apiUrl, { cache: 'no-store' });
-        
-        if (!res.ok) {
-            console.error(`Failed to fetch alerts: ${res.statusText}`);
-            return [];
-        }
-        const data = await res.json();
-        return data.alerts || [];
-    } catch (error) {
-        console.error("Failed to fetch alerts:", error);
-        return [];
-    }
-}
-
+// The page component is now much simpler!
 export default async function AlertsPage() {
-    const alerts = await getInactivityAlerts();
+    // Directly call the function to get data. No more fetch, URLs, or JSON parsing.
+    const alerts = await getInactivityAlertsData();
+    
     return <AlertsClient alerts={alerts} />;
 }

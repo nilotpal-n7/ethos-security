@@ -3,7 +3,21 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useInView } from "react-intersection-observer";
-import { CreditCard, Wifi, Calendar, BookOpen, MessageSquare, Loader2, BrainCircuit } from "lucide-react";
+import { CreditCard, Wifi, Calendar, BookOpen, MessageSquare, Loader2, BrainCircuit, AlertTriangle } from "lucide-react";
+
+// --- NEW Sub-Component: NoRecentActivityAlert ---
+// Displays a critical alert at the top if the last known event is over 24 hours ago.
+function NoRecentActivityAlert() {
+    return (
+        <div className="relative bg-red-900/50 border border-red-500/50 text-red-300 px-4 py-3 rounded-lg mb-8 flex items-center gap-4 z-1">
+            <AlertTriangle className="h-5 w-5 text-red-400" />
+            <div>
+                <p className="font-bold">Critical Alert</p>
+                <p className="text-sm">No activity detected in the last 24 hours.</p>
+            </div>
+        </div>
+    );
+}
 
 // --- Sub-Component: Automated GapAnalyzer ---
 // This component now automatically fetches its prediction when it appears on screen.
@@ -88,9 +102,14 @@ const eventIcons: { [key: string]: React.ReactElement } = {
 const iconColors: { [key: string]: string } = {
     "Card Swipe": "bg-blue-500", "Wi-Fi Connection": "bg-green-500", "Room Booking": "bg-purple-500", "Library Checkout": "bg-yellow-500", "Helpdesk Ticket": "bg-red-500",
 };
-type TimelineProps = { userId: number; onMonthChange: (dateString: string) => void; };
+type TimelineProps = { 
+    userId: number; 
+    onMonthChange: (dateString: string) => void;
+    from?: string | null;
+    to?: string | null;
+};
 
-export function Timeline({ userId, onMonthChange }: TimelineProps) {
+export function Timeline({ userId, onMonthChange, from, to }: TimelineProps) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -101,7 +120,11 @@ export function Timeline({ userId, onMonthChange }: TimelineProps) {
     if (isLoading || !hasMore) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/timeline/${userId}?page=${page}`);
+      const params = new URLSearchParams({ page: page.toString() });
+      if (from) params.append('from', from);
+      if (to) params.append('to', to);
+
+      const response = await fetch(`/api/timeline/${userId}?${params.toString()}`);
       const data = await response.json();
       if (data && Array.isArray(data.timeline)) {
         setEvents((prev) => [...prev, ...data.timeline]);
@@ -117,7 +140,7 @@ export function Timeline({ userId, onMonthChange }: TimelineProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [page, userId, isLoading, hasMore]);
+  }, [page, userId, isLoading, hasMore, from, to]);
 
   useEffect(() => {
     if (loaderInView && hasMore && !isLoading) loadMoreEvents();
@@ -129,7 +152,7 @@ export function Timeline({ userId, onMonthChange }: TimelineProps) {
     setHasMore(true);
     setIsLoading(false);
     onMonthChange("");
-  }, [userId, onMonthChange]);
+  }, [userId, onMonthChange, from, to]);
 
   const timelineItems = useMemo(() => {
     const items: { type: 'event' | 'gap'; data: any }[] = [];
@@ -161,6 +184,24 @@ export function Timeline({ userId, onMonthChange }: TimelineProps) {
     }
     return items.reverse();
   }, [events]);
+
+  // --- NEW: Memo hook to check for the top-level 24-hour alert ---
+  const showNoRecentActivityAlert = useMemo(() => {
+      if (isLoading || events.length === 0) {
+          return false;
+      }
+      // The timelineItems are reversed, so the last item is the oldest from the current batch.
+      // We need the absolute newest event from the 'events' state.
+      const newestEvent = events.reduce((latest, current) => 
+          new Date(current.timestamp) > new Date(latest.timestamp) ? current : latest
+      );
+
+      const now = new Date().getTime();
+      const newestEventTime = new Date(newestEvent.timestamp).getTime();
+      const diffHours = (now - newestEventTime) / (1000 * 60 * 60);
+      
+      return diffHours > 24;
+  }, [events, isLoading]);
   
   const itemsByMonth = useMemo(() => {
     return timelineItems.reduce((acc, item) => {
@@ -178,6 +219,7 @@ export function Timeline({ userId, onMonthChange }: TimelineProps) {
 
   return (
     <div className="relative w-full max-w-4xl mx-auto px-4">
+    {showNoRecentActivityAlert && <NoRecentActivityAlert />}
       <div className="absolute left-1/2 top-0 h-full w-0.5 bg-gray-700 -translate-x-1/2"></div>
       
       {Object.entries(itemsByMonth).map(([monthYear, monthItems]) => (

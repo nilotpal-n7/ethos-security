@@ -82,7 +82,8 @@ def create_features_from_raw_data(anchor_events, candidate_user, all_evidence):
 
 def generate_training_data_from_csvs():
     """
-    Reads all raw CSV data and synthesizes a labeled training dataset.
+    Reads all raw CSV data and synthesizes a labeled training dataset
+    by calling the SAME feature engineering function used in production.
     """
     print("Generating training data from raw CSV files...")
     if os.path.exists(TRAINING_DATA_PATH):
@@ -90,43 +91,69 @@ def generate_training_data_from_csvs():
         return pd.read_csv(TRAINING_DATA_PATH)
 
     try:
-        profiles_df = pd.read_csv(os.path.join(DATA_DIR, 'student_or_staff_profiles.csv'))
+        # Load all necessary raw data sources
+        users_df = pd.read_csv(os.path.join(DATA_DIR, 'student_or_staff_profiles.csv'))
         swipes_df = pd.read_csv(os.path.join(DATA_DIR, 'campus_card_swipes.csv'))
-        # ... load other csvs as needed ...
+        wifi_df = pd.read_csv(os.path.join(DATA_DIR, 'wifi_associations_logs.csv'))
+        cctv_df = pd.read_csv(os.path.join(DATA_DIR, 'cctv_frames.csv'))
+        notes_df = pd.read_csv(os.path.join(DATA_DIR, 'free_text_notes (helpdesk or RSVps).csv'))
+        lab_df = pd.read_csv(os.path.join(DATA_DIR, 'lab_bookings.csv'))
+        library_df = pd.read_csv(os.path.join(DATA_DIR, 'library_checkouts.csv'))
     except FileNotFoundError as e:
         print(f"Error: Required CSV not found - {e}. Aborting training.")
         return None
 
-    card_to_entity = {row['card_id']: row['entity_id'] for _, row in profiles_df.dropna(subset=['card_id', 'entity_id']).iterrows()}
-    all_entity_ids = profiles_df['entity_id'].dropna().tolist()
-    features = []
+    # Convert dataframes to the list of dictionaries format our API expects
+    all_users = users_df.rename(columns={'entity_id': 'id', 'full_name': 'fullName', 'student_id': 'externalId'}).to_dict('records')
+    all_swipes = swipes_df.to_dict('records')
+    all_wifi = wifi_df.to_dict('records')
+    all_cctv = cctv_df.to_dict('records')
+    all_notes = notes_df.to_dict('records')
+    all_lab = lab_df.to_dict('records')
+    all_library = library_df.to_dict('records')
 
-    for _, swipe in swipes_df.head(5000).iterrows(): # Use a subset for faster training generation
-        true_entity_id = card_to_entity.get(swipe['card_id'])
-        if not true_entity_id: continue
+    
+    # Create a mapping from card_id to the user who owns it
+    card_to_user_map = {user['card_id']: user for user in all_users if pd.notna(user.get('card_id'))}
+    all_user_ids = [user['id'] for user in all_users]
 
-        # Simulate a positive sample (the true owner)
-        positive_features = {
-            'time_diff_wifi': random.uniform(0, 60), 'same_location_wifi': 1 if random.random() > 0.2 else 0,
-            'is_in_booking': 1 if random.random() > 0.7 else 0, 'has_alibi': 0,
-            'time_diff_cctv_face': random.uniform(0, 60), 'face_match_in_frame': 1 if random.random() > 0.5 else 0,
-            'is_owner': 1
-        }
-        features.append(positive_features)
-
-        # Simulate negative samples (random other users)
-        for _ in range(4):
-            random_entity_id = random.choice(all_entity_ids)
-            if random_entity_id == true_entity_id: continue
-            negative_features = {
-                'time_diff_wifi': 999, 'same_location_wifi': 0,
-                'is_in_booking': 1 if random.random() > 0.95 else 0, 'has_alibi': 1 if random.random() > 0.5 else 0,
-                'time_diff_cctv_face': 999, 'face_match_in_frame': 0,
-                'is_owner': 0
-            }
-            features.append(negative_features)
+    features_list = []
+    
+    # Iterate through a sample of swipes to generate training examples
+    for anchor_swipe in all_swipes[:2000]: # Use a subset for faster generation
+        true_owner = card_to_user_map.get(anchor_swipe['card_id'])
+        if not true_owner:
+            continue
             
-    df = pd.DataFrame(features)
+        # This simulates the "allEvidence" payload sent from the Node.js API
+        # In a real scenario, you'd filter this more intelligently around the event time
+        mock_evidence = {
+            "wifiLogs": all_wifi,
+            "bookings": all_lab,
+            "alibiSwipes": all_library,
+            "cctvFrames": all_cctv,
+            "notes": all_notes,
+            "user_to_face_map": {},
+        }
+        
+        # --- Positive Sample (the true owner) ---
+        positive_features = create_features_from_raw_data([anchor_swipe], true_owner, mock_evidence)
+        positive_features['is_owner'] = 1
+        features_list.append(positive_features)
+
+        # --- Negative Samples (random other users) ---
+        for _ in range(4): # Generate 4 negative samples for each positive one
+            random_user_id = random.choice(all_user_ids)
+            if random_user_id == true_owner['id']:
+                continue
+            
+            random_user = next((user for user in all_users if user['id'] == random_user_id), None)
+            if random_user:
+                negative_features = create_features_from_raw_data([anchor_swipe], random_user, mock_evidence)
+                negative_features['is_owner'] = 0
+                features_list.append(negative_features)
+
+    df = pd.DataFrame(features_list)
     os.makedirs(MODEL_DIR, exist_ok=True)
     df.to_csv(TRAINING_DATA_PATH, index=False)
     print(f"Training data with {len(df)} samples saved to '{TRAINING_DATA_PATH}'.")

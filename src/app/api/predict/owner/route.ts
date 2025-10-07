@@ -31,7 +31,13 @@ export async function POST(req: NextRequest) {
         const allBookingEvidence = locationIds.length > 0 ? await db.query.roomBookings.findMany({ where: or(...anchorSwipes.map(s => and(inArray(roomBookings.locationId, locationIds), lte(roomBookings.startTime, s.timestamp!), gte(roomBookings.endTime, s.timestamp!))))}) : [];
         const allAlibiEvidence = locationIds.length > 0 ? await db.query.swipeLogs.findMany({ where: or(...timeWindows.map(tw => and(notInArray(swipeLogs.locationId, locationIds), gte(swipeLogs.timestamp, tw.start), lte(swipeLogs.timestamp, tw.end)))), with: { card: true }}) : [];
         const allCctvEvidence = locationIds.length > 0 ? await db.query.cctvFrameLogs.findMany({ where: or(...timeWindows.map(tw => and(inArray(cctvFrameLogs.locationId, locationIds), gte(cctvFrameLogs.timestamp, tw.start), lte(cctvFrameLogs.timestamp, tw.end))))}) : [];
-        const userToFaceMap = Object.fromEntries((await db.query.facialProfiles.findMany()).map(fp => [fp.userId, fp.id]));
+        // Select ONLY the columns you need, avoiding the large 'embedding' data
+        const faceProfiles = await db.select({
+            userId: facialProfiles.userId,
+            id: facialProfiles.id
+        }).from(facialProfiles);
+        
+        const userToFaceMap = Object.fromEntries(faceProfiles.map(fp => [fp.userId, fp.id]));
 
 
         // --- 3. SEND RAW DATA TO PYTHON API ---
