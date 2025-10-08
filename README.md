@@ -112,7 +112,7 @@ The platform follows a **microservices-oriented architecture** for scalability a
 
    ```bash
    npm install
-   cp .env.example .env.local
+   cp .env.local .env
    # Add your database URL and secrets to .env.local
    npm run db:push
    ```
@@ -124,6 +124,7 @@ The platform follows a **microservices-oriented architecture** for scalability a
    pip install -r requirements.txt
    # Train your model with the dataset
    python predict_owner.py train
+   python predict_location.py
    ```
 
 4. **Run the Application**
